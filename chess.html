@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>클래식 체스</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #121212;
+            color: #e5e5e5;
+            overflow: hidden;
+            touch-action: manipulation;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        .board-container {
+            aspect-ratio: 1 / 1;
+            width: min(72vh, 88vw, 420px);
+            max-width: 100%;
+        }
+        .move-history-container::-webkit-scrollbar {
+            width: 4px;
+        }
+        .move-history-container::-webkit-scrollbar-thumb {
+            background-color: #404040;
+            border-radius: 4px;
+        }
+        /* SVG Piece Styles */
+        .piece-svg {
+            width: 85%;
+            height: 85%;
+            display: block;
+            margin: auto;
+            pointer-events: none;
+            filter: drop-shadow(0 3px 3px rgba(0,0,0,0.4));
+            transition: transform 0.15s ease-in-out;
+        }
+        .square-active .piece-svg {
+            transform: scale(1.12);
+        }
+        /* Mobile Touch target improvements */
+        .chess-square {
+            -webkit-tap-highlight-color: transparent;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col items-center justify-between p-2 sm:p-4 select-none overflow-hidden">
+
+    <!-- Header -->
+    <header class="w-full max-w-4xl flex justify-between items-center py-2 px-3 sm:px-4 bg-neutral-800 rounded-xl shadow-md border border-neutral-700 flex-shrink-0">
+        <div class="flex items-center space-x-2 sm:space-x-3">
+            <i class="fa-solid fa-chess-king text-amber-400 text-lg sm:text-xl"></i>
+            <h1 class="text-sm sm:text-lg font-bold tracking-wide text-amber-100">클래식 체스</h1>
+        </div>
+        <div class="flex items-center space-x-2">
+            <!-- Sound Toggle Button -->
+            <button id="btn-sound" class="text-xs px-2.5 py-1.5 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-amber-200 border border-neutral-600 transition flex items-center gap-1.5 touch-manipulation active:scale-95" title="사운드 켜기/끄기">
+                <i id="sound-icon" class="fa-solid fa-volume-high"></i>
+                <span id="sound-text" class="hidden sm:inline">소리 켜짐</span>
+            </button>
+            <div id="game-status" class="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-neutral-700 text-amber-200 border border-neutral-600">
+                연한 갈색 순서
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="w-full max-w-4xl flex-1 flex flex-col lg:flex-row items-center justify-center gap-2 sm:gap-4 my-1 overflow-hidden">
+        
+        <!-- Chessboard Container -->
+        <div class="flex flex-col items-center justify-center flex-shrink-0">
+            <div id="chessboard" class="board-container grid grid-cols-8 grid-rows-8 bg-neutral-900 border-4 border-neutral-700 rounded-xl shadow-2xl overflow-hidden touch-none">
+                <!-- Dynamically populated via JS -->
+            </div>
+        </div>
+
+        <!-- Controls & History Sidebar -->
+        <div class="w-full max-w-[92vw] sm:max-w-[420px] lg:w-64 flex flex-col gap-2 flex-shrink-0">
+            
+            <!-- Game Controls -->
+            <div class="bg-neutral-800 p-2.5 rounded-xl border border-neutral-700 shadow-md">
+                <h2 class="text-[11px] font-bold text-amber-400 mb-1.5 flex items-center gap-1">
+                    <i class="fa-solid fa-sliders"></i> 게임 설정
+                </h2>
+                
+                <!-- Game Mode Selector -->
+                <div class="mb-2">
+                    <select id="game-mode" class="w-full bg-neutral-700 border border-neutral-600 text-amber-100 rounded-lg p-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500">
+                        <option value="pvp">2인용 (Local Pass & Play)</option>
+                        <option value="ai-easy">인공지능 대전 (쉬움)</option>
+                        <option value="ai-medium" selected>인공지능 대전 (보통)</option>
+                    </select>
+                </div>
+
+                <!-- Control Buttons -->
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="btn-undo" class="bg-neutral-700 hover:bg-neutral-600 active:scale-95 text-neutral-200 py-1.5 px-2 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1 border border-neutral-600 touch-manipulation">
+                        <i class="fa-solid fa-rotate-left"></i> 무르기
+                    </button>
+                    <button id="btn-restart" class="bg-amber-700 hover:bg-amber-600 active:scale-95 text-white py-1.5 px-2 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1 border border-amber-600 touch-manipulation">
+                        <i class="fa-solid fa-arrows-rotate"></i> 새 게임
+                    </button>
+                </div>
+            </div>
+
+            <!-- Game Statistics Panel -->
+            <div class="bg-neutral-800 p-2.5 rounded-xl border border-neutral-700 shadow-md">
+                <div class="flex justify-between items-center mb-1">
+                    <h2 class="text-[11px] font-bold text-amber-400 flex items-center gap-1">
+                        <i class="fa-solid fa-chart-pie"></i> 게임 통계
+                    </h2>
+                    <button id="btn-reset-stats" class="text-[10px] text-neutral-400 hover:text-amber-200 transition underline">기록 초기화</button>
+                </div>
+                <div class="grid grid-cols-3 gap-1 text-center bg-neutral-900/60 p-1.5 rounded-lg border border-neutral-800 text-[10px]">
+                    <div>
+                        <div class="text-neutral-500">승리</div>
+                        <div id="stat-wins" class="font-bold text-amber-300 text-xs">0</div>
+                    </div>
+                    <div>
+                        <div class="text-neutral-500">패배</div>
+                        <div id="stat-losses" class="font-bold text-red-400 text-xs">0</div>
+                    </div>
+                    <div>
+                        <div class="text-neutral-500">무승부</div>
+                        <div id="stat-draws" class="font-bold text-neutral-300 text-xs">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Move History -->
+            <div class="bg-neutral-800 p-2 rounded-xl border border-neutral-700 shadow-md flex flex-col h-14 sm:h-16 lg:h-20">
+                <h2 class="text-[11px] font-bold text-amber-400 mb-0.5 flex items-center gap-1">
+                    <i class="fa-solid fa-list-ol"></i> 이동 기록
+                </h2>
+                <div id="move-history" class="move-history-container flex-1 overflow-y-auto pr-1 text-[11px] font-mono space-y-0.5 bg-neutral-900/60 p-1 rounded-lg border border-neutral-800" style="overscroll-behavior: contain;">
+                    <div class="text-neutral-500 text-center py-0.5 text-[10px]">게임을 시작하세요!</div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Game Over Modal -->
+    <div id="game-over-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+        <div class="bg-neutral-800 border border-neutral-700 rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl">
+            <i class="fa-solid fa-trophy text-amber-500 text-4xl mb-3"></i>
+            <h3 id="modal-title" class="text-lg font-bold text-amber-100 mb-1">게임 종료</h3>
+            <p id="modal-desc" class="text-xs text-neutral-300 mb-5">승리하였습니다!</p>
+            <button id="modal-restart" class="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition shadow-md touch-manipulation active:scale-95">
+                다시 시작하기
+            </button>
+        </div>
+    </div>
+
+    <script>
+        class SoundFX {
+            constructor() {
+                this.ctx = null;
+                this.enabled = localStorage.getItem('chess_sound_enabled') !== 'false';
+            }
+
+            initContext() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            toggleSound() {
+                this.enabled = !this.enabled;
+                localStorage.setItem('chess_sound_enabled', this.enabled);
+                return this.enabled;
+            }
+
+            playMove() {
+                if (!this.enabled) return;
+                this.initContext();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(320, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(150, this.ctx.currentTime + 0.08);
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.08);
+            }
+
+            playCapture() {
+                if (!this.enabled) return;
+                this.initContext();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(180, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(60, this.ctx.currentTime + 0.12);
+                gain.gain.setValueAtTime(0.5, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.12);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.12);
+            }
+
+            playCheck() {
+                if (!this.enabled) return;
+                this.initContext();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(600, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(400, this.ctx.currentTime + 0.2);
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.2);
+            }
+
+            playGameOver() {
+                if (!this.enabled) return;
+                this.initContext();
+                const now = this.ctx.currentTime;
+                [261.63, 329.63, 392.00, 523.25].forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.1);
+                    gain.gain.setValueAtTime(0.3, now + idx * 0.1);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.1 + 0.3);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.1);
+                    osc.stop(now + idx * 0.1 + 0.3);
+                });
+            }
+        }
+
+        const sounds = new SoundFX();
+
+        class GameStats {
+            constructor() {
+                this.load();
+            }
+
+            load() {
+                const data = JSON.parse(localStorage.getItem('chess_game_stats') || '{"wins":0, "losses":0, "draws":0}');
+                this.wins = data.wins;
+                this.losses = data.losses;
+                this.draws = data.draws;
+            }
+
+            save() {
+                localStorage.setItem('chess_game_stats', JSON.stringify({
+                    wins: this.wins,
+                    losses: this.losses,
+                    draws: this.draws
+                }));
+            }
+
+            recordWin() {
+                this.wins++;
+                this.save();
+                updateStatsUI();
+            }
+
+            recordLoss() {
+                this.losses++;
+                this.save();
+                updateStatsUI();
+            }
+
+            recordDraw() {
+                this.draws++;
+                this.save();
+                updateStatsUI();
+            }
+
+            reset() {
+                this.wins = 0;
+                this.losses = 0;
+                this.draws = 0;
+                this.save();
+                updateStatsUI();
+            }
+        }
+
+        const stats = new GameStats();
+
+        function updateStatsUI() {
+            document.getElementById('stat-wins').innerText = stats.wins;
+            document.getElementById('stat-losses').innerText = stats.losses;
+            document.getElementById('stat-draws').innerText = stats.draws;
+        }
+
+        function initSoundUI() {
+            const btnSound = document.getElementById('btn-sound');
+            const soundIcon = document.getElementById('sound-icon');
+            const soundText = document.getElementById('sound-text');
+
+            if (sounds.enabled) {
+                soundIcon.className = 'fa-solid fa-volume-high';
+                soundText.innerText = '소리 켜짐';
+            } else {
+                soundIcon.className = 'fa-solid fa-volume-xmark';
+                soundText.innerText = '소리 꺼짐';
+            }
+
+            btnSound.onclick = () => {
+                const newState = sounds.toggleSound();
+                if (newState) {
+                    soundIcon.className = 'fa-solid fa-volume-high';
+                    soundText.innerText = '소리 켜짐';
+                    sounds.playMove();
+                } else {
+                    soundIcon.className = 'fa-solid fa-volume-xmark';
+                    soundText.innerText = '소리 꺼짐';
+                }
+            };
+        }
+
+        // High quality standard vector SVG paths for Chess Pieces (Lichess/Chess.com style)
+        const PIECE_SVGS = {
+            // Light Brown (Wood/Gold Tone)
+            'wP': `<svg class="piece-svg" viewBox="0 0 45 45"><path d="M 22.5,9 C 19.8,9 17.7,11.1 17.7,13.8 C 17.7,15.2 18.3,16.5 19.2,17.4 C 16.5,18.9 14,21.8 14,26 L 31,26 C 31,21.8 28.5,18.9 25.8,17.4 C 26.7,16.5 27.3,15.2 27.3,13.8 C 27.3,11.1 25.2,9 22.5,9 z" fill="#F0D9B5" stroke="#8A5A2B" stroke-width="1.5"/><path d="M 12,32 L 33,32 L 33,29 L 12,29 z" fill="#F0D9B5" stroke="#8A5A2B" stroke-width="1.5"/><path d="M 10,36 L 35,36 L 35,33 L 10,33 z" fill="#F0D9B5" stroke="#8A5A2B" stroke-width="1.5"/></svg>`,
+            'wR': `<svg class="piece-svg" viewBox="0 0 45 45"><g fill="#F0D9B5" stroke="#8A5A2B" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M 9,39 L 36,39 L 36,36 L 9,36 z"/><path d="M 12,36 L 12,32 L 33,32 L 33,36 z"/><path d="M 11,14 L 11,9 L 15,9 L 15,11 L 20,11 L 20,9 L 25,9 L 25,11 L 30,11 L 30,9 L 34,9 L 34,14 z"/><path d="M 12,14 L 33,14 L 31,32 L 14,32 z"/></g></svg>`,
+            'wN': `<svg class="piece-svg" viewBox="0 0 45 45"><g fill="#F0D9B5" stroke="#8A5A2B" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M 22,10 C 32.5,11 38.5,18 38,39 L 15,39 C 15,30 20,28 17,25 C 15,23 11,23 9,21 C 7,19 8,16 11,15 C 13,14 17,17 19,16 C 21,15 21.5,11 22,10 z"/><path d="M 24,18 C 24.5,19 23,21.5 21.5,21.5 C 20,21.5 19.5,19.5 20,18.5 C 20.5,17.5 23.5,17 24,18 z" fill="#8A5A2B"/><path d="M 9.5,25.5 C 10.5,27 12,28.5 14,29 C 16,29.5 18,28.5 18,27.5" fill="none"/></g></svg>`,
+            'wB': `<svg class="piece-svg" viewBox="0 0 45 45"><g fill="#F0D9B5" stroke="#8A5A2B" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M 9,36 C 12,35 15,35 18,36 C 21,37 24,37 27,36 C 30,35 33,35 36,36 L 36,39 L 9,39 z"/><path d="M 15,32 C 18,31 27,31 30,32 L 30,35 L 15,35 z"/><path d="M 22.5,10 C 20,10 16,16 16,23 C 16,28 18.5,30 22.5,30 C 26.5,30 29,28 29,23 C 29,16 25,10 22.5,10 z"/><circle cx="22.5" cy="8" r="1.5"/><path d="M 17.5,26 C 22.5,26 27.5,26 27.5,26" fill="none"/><path d="M 22.5,14 L 22.5,22 M 18.5,18 L 26.5,18"/></g></svg>`,
+            'wQ': `<svg class="piece-svg" viewBox="0 0 45 45"><g fill="#F0D9B5" stroke="#8A5A2B" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M 9,36 C 12,35 15,35 18,36 C 21,37 24,37 27,36 C 30,35 33,35 36,36 L 36,39 L 9,39 z"/><path d="M 11,32 C 16,31 29,31 34,32 L 34,35 L 11,35 z"/><path d="M 9,26 C 10.5,24.5 12,23 12,21 C 12,17 9,13 9,13 L 16.5,19.5 L 22.5,10 L 28.5,19.5 L 36,13 C 36,13 33,17 33,21 C 33,23 34.5,24.5 36,26 L 9,26 z"/><circle cx="9" cy="12" r="2"/><circle cx="16.5" cy="17.5" r="2"/><circle cx="22.5" cy="8" r="2"/><circle cx="28.5" cy="17.5" r="2"/><circle cx="36" cy="12" r="2"/></g></svg>`,
+            'wK': `<svg class="piece-svg" viewBox="0 0 45 45"><g fill="#F0D9B5" stroke="#8A5A2B" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M 22.5,11.5 L 22.5,6 M 20,8.5 L 25,8.5"/><path d="M 11.5,37 C 17,35.5 28,35.5 33.5,37 L 33.5,40 L 11.5,40 z"/><path d="M 11.5,32 C 16.5,30.5 28.5,30.5 33.5,32 L 33.5,35 L 11.5,35 z"/><path d="M 22.5,27 C 17,27 13.5,23 13.5,18 C 13.5,13 18,13 22.5,15.5 C 27,13 31.5,13 31.5,18 C 31.5,23 28,27 22.5,27 z"/></g></svg>`,
+
+            // Dark Black (Deep Charcoal & Pure Black)
+            'bP': `<svg class="piece-svg" viewBox="0 0 45 45"><path d="M 22.5,9 C 19.8,9 17.7,11.1 17.7,13.8 C 17.7,15.2 18.3,16.5 19.2,17.4 C 16.5,18.9 14,21.8 14,26 L 31,26 C 31,21.8 28.5,18.9 25.8,17.4 C 26.7,16.5 27.3,15.2 27.3,13.8 C 27.3,11.1 25.2,9 22.5,9 z" fill="#1C1B1A" stroke="#000000" stroke-width="1.5"/><path d="M 12,32 L 33,32 L 33,29 L 12,29 z" fill="#1C1B1A" stroke="#000000" stroke-width="1.5"/><path d="M 10,36 L 35,36 L 35,33 L 10,33 z" fill="#1C1B1A" stroke="#000000" stroke-width="1.5"/></svg>`,
+            'bR': `<svg class="piece-svg" viewBox="0 0 45 45"><g fill="#1C1B1A" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M 9,39 L 36,39 L 36,36 L 9,36 z"/><path d="M 12,36 L 12,32 L 33,32 L 33,36 z"/><path d="M 11,14 L 11,9 L 15,9 L 15,11 L 20,11 L 20,9 L 25,9 L 25,11 L 30,11 L 30,9 L 34,9 L 34,14 z"/><path d="M 12,14 L 33,14 L 31,32 L 14,32 z"/></g></svg>`,
+            'bN': `<svg class="piece-svg" viewBox="0 0 45 45"><g fill="#1C1B1A" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M 22,10 C 32.5,11 38.5,18 38,39 L 15,39 C 15,30 20,28 17,25 C 15,23 11,23 9,21 C 7,19 8,16 11,15 C 13,14 17,17 19,16 C 21,15 21.5,11 22,10 z"/><path d="M 24,18 C 24.5,19 23,21.5 21.5,21.5 C 20,21.5 19.5,19.5 20,18.5 C 20.5,17.5 23.5,17 24,18 z" fill="#F0D9B5"/><path d="M 9.5,25.5 C 10.5,27 12,28.5 14,29 C 16,29.5 18,28.5 18,27.5" fill="none" stroke="#555555"/></g></svg>`,
+            'bB': `<svg class="piece-svg" viewBox="0 0 45 45"><g fill="#1C1B1A" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M 9,36 C 12,35 15,35 18,36 C 21,37 24,37 27,36 C 30,35 33,35 36,36 L 36,39 L 9,39 z"/><path d="M 15,32 C 18,31 27,31 30,32 L 30,35 L 15,35 z"/><path d="M 22.5,10 C 20,10 16,16 16,23 C 16,28 18.5,30 22.5,30 C 26.5,30 29,28 29,23 C 29,16 25,10 22.5,10 z"/><circle cx="22.5" cy="8" r="1.5"/><path d="M 17.5,26 C 22.5,26 27.5,26 27.5,26" fill="none"/><path d="M 22.5,14 L 22.5,22 M 18.5,18 L 26.5,18" stroke="#555555"/></g></svg>`,
+            'bQ': `<svg class="piece-svg" viewBox="0 0 45 45"><g fill="#1C1B1A" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M 9,36 C 12,35 15,35 18,36 C 21,37 24,37 27,36 C 30,35 33,35 36,36 L 36,39 L 9,39 z"/><path d="M 11,32 C 16,31 29,31 34,32 L 34,35 L 11,35 z"/><path d="M 9,26 C 10.5,24.5 12,23 12,21 C 12,17 9,13 9,13 L 16.5,19.5 L 22.5,10 L 28.5,19.5 L 36,13 C 36,13 33,17 33,21 C 33,23 34.5,24.5 36,26 L 9,26 z"/><circle cx="9" cy="12" r="2"/><circle cx="16.5" cy="17.5" r="2"/><circle cx="22.5" cy="8" r="2"/><circle cx="28.5" cy="17.5" r="2"/><circle cx="36" cy="12" r="2"/></g></svg>`,
+            'bK': `<svg class="piece-svg" viewBox="0 0 45 45"><g fill="#1C1B1A" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M 22.5,11.5 L 22.5,6 M 20,8.5 L 25,8.5" stroke="#F0D9B5"/><path d="M 11.5,37 C 17,35.5 28,35.5 33.5,37 L 33.5,40 L 11.5,40 z"/><path d="M 11.5,32 C 16.5,30.5 28.5,30.5 33.5,32 L 33.5,35 L 11.5,35 z"/><path d="M 22.5,27 C 17,27 13.5,23 13.5,18 C 13.5,13 18,13 22.5,15.5 C 27,13 31.5,13 31.5,18 C 31.5,23 28,27 22.5,27 z"/></g></svg>`
+        };
+
+        class ChessGame {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.board = [
+                    ['bR', 'bN', 'bB', 'bQ', 'bK', 'bB', 'bN', 'bR'],
+                    ['bP', 'bP', 'bP', 'bP', 'bP', 'bP', 'bP', 'bP'],
+                    [null, null, null, null, null, null, null, null],
+                    [null, null, null, null, null, null, null, null],
+                    [null, null, null, null, null, null, null, null],
+                    [null, null, null, null, null, null, null, null],
+                    ['wP', 'wP', 'wP', 'wP', 'wP', 'wP', 'wP', 'wP'],
+                    ['wR', 'wN', 'wB', 'wQ', 'wK', 'wB', 'wN', 'wR']
+                ];
+                this.turn = 'w';
+                this.selectedSquare = null;
+                this.validMoves = [];
+                this.history = [];
+                this.isGameOver = false;
+                this.castlingRights = { w: { k: true, q: true }, b: { k: true, q: true } };
+                this.enPassantSquare = null;
+            }
+
+            getPieceSymbol(piece) {
+                return PIECE_SVGS[piece] || '';
+            }
+
+            findKing(color) {
+                for (let r = 0; r < 8; r++) {
+                    for (let c = 0; c < 8; c++) {
+                        if (this.board[r][c] === color + 'K') return { r, c };
+                    }
+                }
+                return null;
+            }
+
+            isSquareAttacked(r, c, attackerColor) {
+                for (let row = 0; row < 8; row++) {
+                    for (let col = 0; col < 8; col++) {
+                        const piece = this.board[row][col];
+                        if (piece && piece[0] === attackerColor) {
+                            if (this.getPseudoMoves(row, col, { isAttackCheck: true }).some(m => m.r === r && m.c === c)) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                return false;
+            }
+
+            isInCheck(color) {
+                const kingPos = this.findKing(color);
+                if (!kingPos) return false;
+                return this.isSquareAttacked(kingPos.r, kingPos.c, color === 'w' ? 'b' : 'w');
+            }
+
+            getPseudoMoves(r, c, extra = {}) {
+                const isAttackCheck = extra.isAttackCheck || false;
+                const piece = this.board[r][c];
+                if (!piece) return [];
+                const color = piece[0];
+                const type = piece[1];
+                let moves = [];
+
+                const addMove = (nr, nc) => {
+                    if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+                        const target = this.board[nr][nc];
+                        if (!target) {
+                            moves.push({ r: nr, c: nc });
+                        } else {
+                            if (target[0] !== color) moves.push({ r: nr, c: nc });
+                            return false;
+                        }
+                        return true;
+                    }
+                    return false;
+                };
+
+                if (type === 'P') {
+                    const dir = color === 'w' ? -1 : 1;
+                    const startRow = color === 'w' ? 6 : 1;
+                    if (!isAttackCheck && r + dir >= 0 && r + dir < 8 && !this.board[r + dir][c]) {
+                        moves.push({ r: r + dir, c: c });
+                        if (r === startRow && !this.board[r + 2 * dir][c]) {
+                            moves.push({ r: r + 2 * dir, c: c });
+                        }
+                    }
+                    for (let dc of [-1, 1]) {
+                        const nc = c + dc;
+                        const nr = r + dir;
+                        if (nc >= 0 && nc < 8 && nr >= 0 && nr < 8) {
+                            const target = this.board[nr][nc];
+                            if (target && target[0] !== color) {
+                                moves.push({ r: nr, c: nc });
+                            } else if (this.enPassantSquare && this.enPassantSquare.r === nr && this.enPassantSquare.c === nc) {
+                                moves.push({ r: nr, c: nc, enPassant: true });
+                            }
+                        }
+                    }
+                } else if (type === 'N') {
+                    const knightMoves = [
+                        [-2, -1], [-2, 1], [-1, -2], [-1, 2],
+                        [1, -2], [1, 2], [2, -1], [2, 1]
+                    ];
+                    for (let [dr, dc] of knightMoves) {
+                        const nr = r + dr, nc = c + dc;
+                        if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+                            const target = this.board[nr][nc];
+                            if (!target || target[0] !== color) {
+                                moves.push({ r: nr, c: nc });
+                            }
+                        }
+                    }
+                } else if (type === 'K') {
+                    const kingMoves = [
+                        [-1, -1], [-1, 0], [-1, 1],
+                        [0, -1], [0, 1],
+                        [1, -1], [1, 0], [1, 1]
+                    ];
+                    for (let [dr, dc] of kingMoves) {
+                        const nr = r + dr, nc = c + dc;
+                        if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+                            const target = this.board[nr][nc];
+                            if (!target || target[0] !== color) {
+                                moves.push({ r: nr, c: nc });
+                            }
+                        }
+                    }
+                    if (!isAttackCheck && ((color === 'w' && r === 7 && c === 4) || (color === 'b' && r === 0 && c === 4))) {
+                        const rights = this.castlingRights[color];
+                        const oppColor = color === 'w' ? 'b' : 'w';
+                        if (!this.isInCheck(color)) {
+                            if (rights.k && !this.board[r][5] && !this.board[r][6]) {
+                                if (!this.isSquareAttacked(r, 5, oppColor) && !this.isSquareAttacked(r, 6, oppColor)) {
+                                    moves.push({ r: r, c: 6, castling: 'k' });
+                                }
+                            }
+                            if (rights.q && !this.board[r][1] && !this.board[r][2] && !this.board[r][3]) {
+                                if (!this.isSquareAttacked(r, 2, oppColor) && !this.isSquareAttacked(r, 3, oppColor)) {
+                                    moves.push({ r: r, c: 2, castling: 'q' });
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    let dirs = [];
+                    if (type === 'R' || type === 'Q') dirs.push([-1, 0], [1, 0], [0, -1], [0, 1]);
+                    if (type === 'B' || type === 'Q') dirs.push([-1, -1], [-1, 1], [1, -1], [1, 1]);
+                    for (let [dr, dc] of dirs) {
+                        let nr = r + dr, nc = c + dc;
+                        while (addMove(nr, nc)) {
+                            nr += dr;
+                            nc += dc;
+                        }
+                    }
+                }
+                return moves;
+            }
+
+            getLegalMoves(r, c) {
+                const pseudo = this.getPseudoMoves(r, c);
+                const piece = this.board[r][c];
+                if (!piece) return [];
+                const color = piece[0];
+
+                return pseudo.filter(m => {
+                    const originalTarget = this.board[m.r][m.c];
+                    const originalSource = this.board[r][c];
+                    this.board[m.r][m.c] = originalSource;
+                    this.board[r][c] = null;
+
+                    let epCapturedPiece = null;
+                    let epCapturedPos = null;
+                    if (m.enPassant) {
+                        epCapturedPos = { r: r, c: m.c };
+                        epCapturedPiece = this.board[epCapturedPos.r][epCapturedPos.c];
+                        this.board[epCapturedPos.r][epCapturedPos.c] = null;
+                    }
+
+                    const inCheck = this.isInCheck(color);
+
+                    this.board[r][c] = originalSource;
+                    this.board[m.r][m.c] = originalTarget;
+                    if (m.enPassant && epCapturedPiece) {
+                        this.board[epCapturedPos.r][epCapturedPos.c] = epCapturedPiece;
+                    }
+
+                    return !inCheck;
+                });
+            }
+
+            getAllLegalMoves(color) {
+                let all = [];
+                for (let r = 0; r < 8; r++) {
+                    for (let c = 0; c < 8; c++) {
+                        if (this.board[r][c] && this.board[r][c][0] === color) {
+                            const legal = this.getLegalMoves(r, c);
+                            for (let m of legal) {
+                                all.push({ from: { r, c }, to: m });
+                            }
+                        }
+                    }
+                }
+                return all;
+            }
+
+            makeMove(from, to) {
+                const piece = this.board[from.r][from.c];
+                if (!piece) return false;
+
+                const target = this.board[to.r][to.c];
+                let isCapture = target !== null || to.enPassant;
+
+                this.history.push({
+                    board: this.board.map(row => [...row]),
+                    turn: this.turn,
+                    castlingRights: JSON.parse(JSON.stringify(this.castlingRights)),
+                    enPassantSquare: this.enPassantSquare ? { ...this.enPassantSquare } : null
+                });
+
+                this.board[to.r][to.c] = piece;
+                this.board[from.r][from.c] = null;
+
+                if (to.enPassant) {
+                    this.board[from.r][to.c] = null;
+                }
+
+                if (piece[1] === 'P' && Math.abs(from.r - to.r) === 2) {
+                    this.enPassantSquare = { r: (from.r + to.r) / 2, c: from.c };
+                } else {
+                    this.enPassantSquare = null;
+                }
+
+                if (piece[1] === 'K') {
+                    if (to.castling === 'k') {
+                        const rook = this.board[from.r][7];
+                        this.board[from.r][5] = rook;
+                        this.board[from.r][7] = null;
+                    } else if (to.castling === 'q') {
+                        const rook = this.board[from.r][0];
+                        this.board[from.r][3] = rook;
+                        this.board[from.r][0] = null;
+                    }
+                    this.castlingRights[piece[0]].k = false;
+                    this.castlingRights[piece[0]].q = false;
+                }
+
+                if (piece[1] === 'R') {
+                    if (from.r === 7 && from.c === 0) this.castlingRights.w.q = false;
+                    if (from.r === 7 && from.c === 7) this.castlingRights.w.k = false;
+                    if (from.r === 0 && from.c === 0) this.castlingRights.b.q = false;
+                    if (from.r === 0 && from.c === 7) this.castlingRights.b.k = false;
+                }
+
+                if (piece[1] === 'P' && (to.r === 0 || to.r === 7)) {
+                    this.board[to.r][to.c] = piece[0] + 'Q';
+                }
+
+                this.turn = this.turn === 'w' ? 'b' : 'w';
+
+                if (isCapture) {
+                    sounds.playCapture();
+                } else {
+                    sounds.playMove();
+                }
+
+                if (this.isInCheck(this.turn)) {
+                    sounds.playCheck();
+                }
+
+                addMoveHistory(from, to, piece, isCapture);
+                return true;
+            }
+
+            undo() {
+                if (this.history.length === 0) return false;
+                const lastState = this.history.pop();
+                this.board = lastState.board;
+                this.turn = lastState.turn;
+                this.castlingRights = lastState.castlingRights;
+                this.enPassantSquare = lastState.enPassantSquare;
+                this.selectedSquare = null;
+                this.validMoves = [];
+                this.isGameOver = false;
+
+                const historyEl = document.getElementById('move-history');
+                if (historyEl.lastChild && !historyEl.lastChild.innerText.includes('게임을 시작하세요')) {
+                    historyEl.removeChild(historyEl.lastChild);
+                }
+                if (historyEl.children.length === 0) {
+                    historyEl.innerHTML = '<div class="text-neutral-500 text-center py-0.5 text-[10px]">게임을 시작하세요!</div>';
+                }
+                renderBoard();
+                return true;
+            }
+        }
+
+        const game = new ChessGame();
+
+        function renderBoard() {
+            const boardEl = document.getElementById('chessboard');
+            boardEl.innerHTML = '';
+
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const square = document.createElement('div');
+                    const isDark = (r + c) % 2 === 1;
+                    square.className = `chess-square w-full h-full flex items-center justify-center relative cursor-pointer ${
+                        isDark ? 'bg-[#b58863]' : 'bg-[#f0d9b5]'
+                    }`;
+
+                    if (game.selectedSquare && game.selectedSquare.r === r && game.selectedSquare.c === c) {
+                        square.classList.add('square-active', 'ring-4', 'ring-amber-500', 'z-10');
+                    }
+
+                    // Check if this square is a valid move target
+                    const moveMatch = game.validMoves.find(m => m.r === r && m.c === c);
+                    if (moveMatch) {
+                        const targetPiece = game.board[r][c];
+                        if (targetPiece || moveMatch.enPassant) {
+                            // Target has an enemy piece - Highlight red capture ring
+                            const captureIndicator = document.createElement('div');
+                            captureIndicator.className = 'absolute inset-0.5 border-4 border-red-500 rounded-lg animate-pulse bg-red-500/20 pointer-events-none z-20';
+                            square.appendChild(captureIndicator);
+                        } else {
+                            // Empty square move indicator
+                            const indicator = document.createElement('div');
+                            indicator.className = 'w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-amber-900/60 absolute pointer-events-none z-20';
+                            square.appendChild(indicator);
+                        }
+                    }
+
+                    const piece = game.board[r][c];
+                    if (piece) {
+                        const pieceContainer = document.createElement('div');
+                        pieceContainer.className = 'w-full h-full flex items-center justify-center';
+                        pieceContainer.innerHTML = game.getPieceSymbol(piece);
+                        square.appendChild(pieceContainer);
+                    }
+
+                    // Support both click and touchstart for mobile responsiveness
+                    square.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        sounds.initContext();
+                        handleSquareClick(r, c);
+                    });
+                    boardEl.appendChild(square);
+                }
+            }
+            updateGameStatus();
+        }
+
+        function handleSquareClick(r, c) {
+            if (game.isGameOver) return;
+
+            const mode = document.getElementById('game-mode').value;
+            if (mode.startsWith('ai') && game.turn === 'b') return;
+
+            const piece = game.board[r][c];
+
+            if (game.selectedSquare) {
+                const isValid = game.validMoves.some(m => m.r === r && m.c === c);
+                if (isValid) {
+                    game.makeMove(game.selectedSquare, { r, c });
+                    game.selectedSquare = null;
+                    game.validMoves = [];
+                    renderBoard();
+
+                    if (!checkEndGame()) {
+                        if (mode.startsWith('ai') && game.turn === 'b') {
+                            setTimeout(makeAIMove, 300);
+                        }
+                    }
+                    return;
+                }
+            }
+
+            if (piece && piece[0] === game.turn) {
+                game.selectedSquare = { r, c };
+                game.validMoves = game.getLegalMoves(r, c);
+                renderBoard();
+            } else {
+                game.selectedSquare = null;
+                game.validMoves = [];
+                renderBoard();
+            }
+        }
+
+        function makeAIMove() {
+            if (game.isGameOver) return;
+            const legalMoves = game.getAllLegalMoves('b');
+            if (legalMoves.length === 0) return;
+
+            const mode = document.getElementById('game-mode').value;
+            let chosenMove;
+
+            if (mode === 'ai-easy') {
+                chosenMove = legalMoves[Math.floor(Math.random() * legalMoves.length)];
+            } else {
+                let captureMoves = legalMoves.filter(m => game.board[m.to.r][m.to.c] !== null);
+                if (captureMoves.length > 0 && Math.random() < 0.8) {
+                    chosenMove = captureMoves[Math.floor(Math.random() * captureMoves.length)];
+                } else {
+                    chosenMove = legalMoves[Math.floor(Math.random() * legalMoves.length)];
+                }
+            }
+
+            game.makeMove(chosenMove.from, chosenMove.to);
+            renderBoard();
+            checkEndGame();
+        }
+
+        function updateGameStatus() {
+            const statusEl = document.getElementById('game-status');
+            const turnName = game.turn === 'w' ? '연한 갈색' : '검은색';
+            statusEl.innerText = `${turnName} 순서`;
+        }
+
+        function addMoveHistory(from, to, piece, isCapture) {
+            const historyEl = document.getElementById('move-history');
+            if (historyEl.children.length === 1 && historyEl.children[0].tagName === 'DIV' && historyEl.children[0].innerText.includes('게임을 시작하세요')) {
+                historyEl.innerHTML = '';
+            }
+
+            const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+            const fromText = files[from.c] + (8 - from.r);
+            const toText = files[to.c] + (8 - to.r);
+            const moveStr = `${piece[0] === 'w' ? '연한갈색' : '검은색'}: ${fromText} ➔ ${toText} ${isCapture ? '(잡음)' : ''}`;
+
+            const item = document.createElement('div');
+            item.className = 'text-neutral-300 text-[10px]';
+            item.innerText = moveStr;
+            historyEl.appendChild(item);
+        }
+
+        function checkEndGame() {
+            const legalMoves = game.getAllLegalMoves(game.turn);
+            if (legalMoves.length === 0) {
+                game.isGameOver = true;
+                sounds.playGameOver();
+
+                const mode = document.getElementById('game-mode').value;
+                const isAI = mode.startsWith('ai');
+
+                if (game.isInCheck(game.turn)) {
+                    const winnerColor = game.turn === 'w' ? 'b' : 'w';
+                    const winnerName = winnerColor === 'w' ? '연한 갈색' : '검은색';
+
+                    if (isAI) {
+                        if (winnerColor === 'w') stats.recordWin();
+                        else stats.recordLoss();
+                    }
+                    showGameOverModal('체크메이트!', `${winnerName} 팀이 승리하였습니다!`);
+                } else {
+                    stats.recordDraw();
+                    showGameOverModal('스테일메이트 (무승부)', '더 이상 이동할 수 있는 수가 없습니다.');
+                }
+                return true;
+            }
+            return false;
+        }
+
+        function showGameOverModal(title, desc) {
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-desc').innerText = desc;
+            const modal = document.getElementById('game-over-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        document.getElementById('modal-restart').onclick = () => {
+            document.getElementById('game-over-modal').classList.add('hidden');
+            document.getElementById('game-over-modal').classList.remove('flex');
+            game.reset();
+            document.getElementById('move-history').innerHTML = '<div class="text-neutral-500 text-center py-0.5 text-[10px]">게임을 시작하세요!</div>';
+            renderBoard();
+        };
+
+        document.getElementById('btn-restart').onclick = () => {
+            game.reset();
+            document.getElementById('move-history').innerHTML = '<div class="text-neutral-500 text-center py-0.5 text-[10px]">게임을 시작하세요!</div>';
+            renderBoard();
+        };
+
+        document.getElementById('btn-undo').onclick = () => {
+            game.undo();
+        };
+
+        document.getElementById('btn-reset-stats').onclick = () => {
+            stats.reset();
+        };
+
+        window.onload = () => {
+            initSoundUI();
+            updateStatsUI();
+            renderBoard();
+        };
+    </script>
+</body>
+</html>
